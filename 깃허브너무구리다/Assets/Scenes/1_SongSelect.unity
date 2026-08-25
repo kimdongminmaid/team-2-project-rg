@@ -253,8 +253,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: SONG NAME
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: aab46b47f2cbec748bc485608d28b3ab, type: 2}
-  m_sharedMaterial: {fileID: 3125340657340101165, guid: aab46b47f2cbec748bc485608d28b3ab, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 389d701e7f7681a40bad46672f3ade28, type: 2}
+  m_sharedMaterial: {fileID: -4551708560283796434, guid: 389d701e7f7681a40bad46672f3ade28, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []
@@ -909,8 +909,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: ARTIST NAME
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: e6fc8a00bd7ecb2428bb5c6e502062c6, type: 2}
-  m_sharedMaterial: {fileID: -4132170714337725020, guid: e6fc8a00bd7ecb2428bb5c6e502062c6, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 389d701e7f7681a40bad46672f3ade28, type: 2}
+  m_sharedMaterial: {fileID: -4551708560283796434, guid: 389d701e7f7681a40bad46672f3ade28, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []

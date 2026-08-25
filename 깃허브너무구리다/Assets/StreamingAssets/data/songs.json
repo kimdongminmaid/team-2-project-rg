@@ -266,5 +266,17 @@
     "NoteCount": 99999,
     "HasMV": 1,
     "ExistSongbar": 1
+  },
+  {
+    "Id": 23,
+    "Name": "きゅんきゅんみこきゅんきゅん♡",
+    "Difficulty": "15.9",
+    "Composer": "-",
+    "illustration": "-",
+    "Vocal": "-",
+    "BPM": 1,
+    "NoteCount": 99999,
+    "HasMV": 1,
+    "ExistSongbar": 1
   }
 ]
