@@ -19,14 +19,21 @@ public class SongSelectManager : MonoBehaviour
     public TextMeshProUGUI selectedSongTitleText;  
     public TextMeshProUGUI selectedComposerText;   
     public Image selectedJacketImg;                
-    public Image selectedDifficultyImg;            
     
-    [Header("잠긴 곡 UI (신규)")]
+    [Header("잠긴 곡 UI")]
     public RectTransform lockedStatusPanel;
 
-    [Header("추가 설정 UI (신규)")]
+    [Header("추가 설정 UI")]
     public TextMeshProUGUI speedText;      
     public TextMeshProUGUI mvStatusText;   
+
+    [Header("난이도 텍스트 UI (신규)")]
+    public TextMeshProUGUI easyTitleText;
+    public TextMeshProUGUI hardTitleText;
+    public TextMeshProUGUI insaneTitleText;
+    public TextMeshProUGUI easyValueText;
+    public TextMeshProUGUI hardValueText;
+    public TextMeshProUGUI insaneValueText;
 
     [Header("기본 에셋 연결")]
     public Sprite arrowSprite;
@@ -39,11 +46,17 @@ public class SongSelectManager : MonoBehaviour
     private float visualSongIndex = 0f; 
     private bool isMvOn = false;
 
+    private int currentDifficulty = 2; // 1: EASY, 2: HARD, 3: INSANE
+
+    private Color colorEasy;
+    private Color colorHard;
+    private Color colorInsane;
+    private Color colorDisabled;
+
     private List<Image> spawnedSongbars = new List<Image>();
     private List<Image> spawnedLockIcons = new List<Image>(); 
     
     private Dictionary<int, Sprite> cachedSongbarSprites = new Dictionary<int, Sprite>();
-    private Dictionary<string, Sprite> levelSpriteCache = new Dictionary<string, Sprite>();
     private Dictionary<int, Sprite> blurImgCache = new Dictionary<int, Sprite>();
     private Dictionary<int, Sprite> leftbarCache = new Dictionary<int, Sprite>();
     private Dictionary<int, Sprite> jacketCache = new Dictionary<int, Sprite>();
@@ -64,8 +77,13 @@ public class SongSelectManager : MonoBehaviour
 
     void Start()
     {
+        // 난이도 색상 초기화
+        ColorUtility.TryParseHtmlString("#5ce1e6", out colorEasy);
+        ColorUtility.TryParseHtmlString("#ff751f", out colorHard);
+        ColorUtility.TryParseHtmlString("#ff3131", out colorInsane);
+        ColorUtility.TryParseHtmlString("#545454", out colorDisabled);
+
         LoadSongList();
-        LoadLevelSprites(); 
         
         mvOnSprite = Resources.Load<Sprite>("Sprites/GameAsset/MV_ON");
         mvOffSprite = Resources.Load<Sprite>("Sprites/GameAsset/MV_OFF");
@@ -85,15 +103,10 @@ public class SongSelectManager : MonoBehaviour
             }
 
             InitializeSongbars();
+            ValidateCurrentDifficulty(songList[0]);
             UpdateStaticImages(0); 
             PlayPreviewMusic();
         }
-    }
-
-    private void LoadLevelSprites()
-    {
-        Sprite[] loadedSprites = Resources.LoadAll<Sprite>("Sprites/Level/Level");
-        foreach (var s in loadedSprites) levelSpriteCache[s.name] = s;
     }
 
     private void LoadSongList()
@@ -164,6 +177,10 @@ public class SongSelectManager : MonoBehaviour
             slideDirection = 1;
         }
 
+        // 난이도 변경 (상/하 방향키)
+        if (kb[Key.UpArrow].wasPressedThisFrame) ChangeDifficulty(1);
+        if (kb[Key.DownArrow].wasPressedThisFrame) ChangeDifficulty(-1);
+
         if (kb[Key.A].wasPressedThisFrame)
         {
             CoreManager.Instance.IsAutoPlay = !CoreManager.Instance.IsAutoPlay;
@@ -184,7 +201,8 @@ public class SongSelectManager : MonoBehaviour
         }
 
         int actualDataIndex = GetWrappedIndex(currentVirtualIndex, songList.Count);
-        bool hasMv = songList[actualDataIndex].HasMV == 1;
+        SongData currentSong = songList[actualDataIndex];
+        bool hasMv = currentSong.HasMV == 1;
         
         if (hasMv && kb[Key.F].wasPressedThisFrame) isMvOn = !isMvOn;
         else if (!hasMv) isMvOn = false;
@@ -193,6 +211,7 @@ public class SongSelectManager : MonoBehaviour
 
         if (songChanged)
         {
+            ValidateCurrentDifficulty(currentSong);
             UpdateStaticImages(slideDirection);
             PlayPreviewMusic();
         }
@@ -208,19 +227,93 @@ public class SongSelectManager : MonoBehaviour
 
         if (kb[Key.Enter].wasPressedThisFrame || kb[Key.NumpadEnter].wasPressedThisFrame)
         {
-            if (songList[actualDataIndex].ExistSongbar == 2) return;
+            if (currentSong.ExistSongbar == 2) return;
             
+            // 난이도가 전부 00 이면 게임 진입 불가
+            if (currentSong.Difficulty_EASY == "00" && currentSong.Difficulty_HARD == "00" && currentSong.Difficulty_INSANE == "00")
+                return;
+
             if (previewAudioSource != null) previewAudioSource.Stop();
             
-            // ⭐ G키 누른 채로 Enter 입력 시 에디터 창으로 진입
             if (kb[Key.G].isPressed)
             {
-                if (CoreManager.Instance != null) CoreManager.Instance.LoadEditorScene(songList[actualDataIndex]);
+                // 변경된 부분: currentDifficulty를 함께 전달
+                if (CoreManager.Instance != null) CoreManager.Instance.LoadEditorScene(currentSong, currentDifficulty);
             }
             else
             {
-                if (CoreManager.Instance != null) CoreManager.Instance.LoadGameScene(songList[actualDataIndex], isMvOn);
+                if (CoreManager.Instance != null) CoreManager.Instance.LoadGameScene(currentSong, isMvOn, currentDifficulty);
             }
+        }
+    }
+
+    private void ChangeDifficulty(int direction)
+    {
+        SongData currentSong = songList[GetWrappedIndex(currentVirtualIndex, songList.Count)];
+        int nextDiff = currentDifficulty;
+
+        for (int i = 0; i < 3; i++)
+        {
+            nextDiff += direction;
+            if (nextDiff > 3) nextDiff = 1;
+            if (nextDiff < 1) nextDiff = 3;
+
+            if (GetDifficultyValue(currentSong, nextDiff) != "00")
+            {
+                currentDifficulty = nextDiff;
+                break;
+            }
+        }
+        UpdateDifficultyUI(currentSong);
+    }
+
+    private void ValidateCurrentDifficulty(SongData song)
+    {
+        if (GetDifficultyValue(song, currentDifficulty) == "00")
+        {
+            if (GetDifficultyValue(song, 2) != "00") currentDifficulty = 2; // 기본 HARD
+            else if (GetDifficultyValue(song, 1) != "00") currentDifficulty = 1;
+            else if (GetDifficultyValue(song, 3) != "00") currentDifficulty = 3;
+            else currentDifficulty = 2; // 전체가 00일 때
+        }
+        UpdateDifficultyUI(song);
+    }
+
+    private string GetDifficultyValue(SongData song, int diff)
+    {
+        if (diff == 1) return song.Difficulty_EASY;
+        if (diff == 2) return song.Difficulty_HARD;
+        if (diff == 3) return song.Difficulty_INSANE;
+        return "00";
+    }
+
+    private void UpdateDifficultyUI(SongData song)
+    {
+        if (easyTitleText == null) return;
+
+        string eVal = song.Difficulty_EASY;
+        string hVal = song.Difficulty_HARD;
+        string iVal = song.Difficulty_INSANE;
+
+        easyValueText.text = eVal == "00" ? "--" : eVal;
+        hardValueText.text = hVal == "00" ? "--" : hVal;
+        insaneValueText.text = iVal == "00" ? "--" : iVal;
+
+        easyTitleText.color = eVal == "00" ? colorDisabled : Color.white;
+        easyValueText.color = eVal == "00" ? colorDisabled : Color.white;
+
+        hardTitleText.color = hVal == "00" ? colorDisabled : Color.white;
+        hardValueText.color = hVal == "00" ? colorDisabled : Color.white;
+
+        insaneTitleText.color = iVal == "00" ? colorDisabled : Color.white;
+        insaneValueText.color = iVal == "00" ? colorDisabled : Color.white;
+
+        if (currentDifficulty == 1 && eVal != "00") {
+            easyTitleText.color = colorEasy; easyValueText.color = colorEasy;
+        } else if (currentDifficulty == 2 && hVal != "00") {
+            hardTitleText.color = colorHard; hardValueText.color = colorHard;
+        } else if (currentDifficulty == 3 && iVal != "00") {
+            insaneTitleText.color = colorInsane; insaneValueText.color = colorInsane;
         }
     }
 
@@ -304,18 +397,6 @@ public class SongSelectManager : MonoBehaviour
         {
             if (jacketCache.TryGetValue(id, out Sprite jacket)) { selectedJacketImg.sprite = jacket; selectedJacketImg.color = Color.white; }
             else selectedJacketImg.color = Color.clear;
-        }
-
-        if (selectedDifficultyImg != null)
-        {
-            string diffKey = $"{currentSong.Difficulty}_mini";
-            if (levelSpriteCache.TryGetValue(diffKey, out Sprite diffSprite))
-            {
-                selectedDifficultyImg.sprite = diffSprite;
-                selectedDifficultyImg.color = Color.white;
-                selectedDifficultyImg.SetNativeSize(); 
-            }
-            else selectedDifficultyImg.color = Color.clear; 
         }
 
         if (direction == 0) 

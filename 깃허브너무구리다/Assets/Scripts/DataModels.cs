@@ -20,7 +20,9 @@ public class SongData
     public int Id;
     public string Name;
     public string SubName; 
-    public string Difficulty;
+    public string Difficulty_EASY;
+    public string Difficulty_HARD;
+    public string Difficulty_INSANE;
     public string Composer;
     public string illustration; 
     public string Vocal;

@@ -85,6 +85,7 @@ public class ChartEditorManager : MonoBehaviour
 
     [Header("에디터 및 카메라 설정")]
     public int editSongId = 1; 
+    public int editLevelId = 2; // 추가 (EASY=1, HARD=2, INSANE=3)
     public Camera editorCamera; 
     public float beatSpacing = 3f; 
     public float hitLineScreenOffsetY = -3f; 
@@ -216,6 +217,9 @@ public class ChartEditorManager : MonoBehaviour
     private Quaternion originalCamRot;
     private Transform originalCamParent;
 
+    private int escapePressCount = 0;
+    private float escapePressTimer = 0f;
+
     void Awake()
     {
         Time.timeScale = 1f;
@@ -291,6 +295,7 @@ public class ChartEditorManager : MonoBehaviour
             if (CoreManager.Instance.CurrentSongData != null && CoreManager.Instance.CurrentSongData.Id > 0)
             {
                 targetId = CoreManager.Instance.CurrentSongData.Id;
+                editLevelId = CoreManager.Instance.CurrentLevelId; // 추가됨
             }
             else if (CoreManager.Instance.CurrentSettings != null && CoreManager.Instance.CurrentSettings.EditorSongid > 0)
             {
@@ -487,6 +492,12 @@ public class ChartEditorManager : MonoBehaviour
         var kb = Keyboard.current;
         if (kb == null) return; 
 
+        if (escapePressTimer > 0)
+        {
+            escapePressTimer -= Time.unscaledDeltaTime;
+            if (escapePressTimer <= 0) escapePressCount = 0;
+        }
+
         if (songIdInputField != null && songIdInputField.isFocused) 
         {
             if (kb[Key.Escape].wasPressedThisFrame || kb[Key.Enter].wasPressedThisFrame || kb[Key.NumpadEnter].wasPressedThisFrame)
@@ -502,10 +513,11 @@ public class ChartEditorManager : MonoBehaviour
             return;
         }
 
+        bool isGUIOpen = linearInputType > 0 || isInputtingFreeKeyNote;
         var mouse = Mouse.current;
         bool isPointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
         
-        if (mouse != null && mainCam != null && !isPlaying && !isPointerOverUI)
+        if (mouse != null && mainCam != null && !isPlaying && !isPointerOverUI && !isGUIOpen)
         {
             Vector3 worldPos = mainCam.ScreenToWorldPoint(new Vector3(mouse.position.ReadValue().x, mouse.position.ReadValue().y, 10f));
             double clickOffsetBeat = (worldPos.y - hitLineScreenOffsetY) / beatSpacing;
@@ -578,8 +590,9 @@ public class ChartEditorManager : MonoBehaviour
             }
         }
 
-        HandleShortcuts();
-        if (!isPointerOverUI) HandleMouseInput(); 
+        if (!isGUIOpen) HandleShortcuts();
+        if (!isPointerOverUI && !isGUIOpen) HandleMouseInput(); 
+        
         UpdateNoteVisuals(); 
         UpdateGridVisuals();
         UpdateUITexts(); 
@@ -613,7 +626,9 @@ public class ChartEditorManager : MonoBehaviour
     private void HandlePlaybackAndScroll()
     {
         var kb = Keyboard.current;
-        if (kb != null && kb[Key.Space].wasPressedThisFrame) TogglePlayButton(); 
+        bool isGUIOpen = linearInputType > 0 || isInputtingFreeKeyNote || isInputtingBpm || isInputtingSpeed;
+        
+        if (kb != null && kb[Key.Space].wasPressedThisFrame && !isGUIOpen) TogglePlayButton(); 
 
         if (isPlaying)
         {
@@ -648,7 +663,7 @@ public class ChartEditorManager : MonoBehaviour
             var mouse = Mouse.current;
             bool isPointerOverUI = EventSystem.current != null && EventSystem.current.IsPointerOverGameObject();
             
-            if (mouse != null && mouse.scroll.ReadValue().y != 0 && !isPointerOverUI)
+            if (mouse != null && mouse.scroll.ReadValue().y != 0 && !isPointerOverUI && !isGUIOpen)
             {
                 float scrollDelta = Mathf.Sign(mouse.scroll.ReadValue().y);
                 double step = 4.0 / currentSnap;
@@ -878,9 +893,16 @@ public class ChartEditorManager : MonoBehaviour
 
             if (kb[Key.Escape].wasPressedThisFrame)
             {
-                SaveChartFile(editSongId); 
-                if (bgmSource != null && bgmSource.isPlaying) bgmSource.Stop();
-                if (CoreManager.Instance != null) CoreManager.Instance.LoadSongSelectScene();
+                escapePressCount++;
+                escapePressTimer = 0.5f; 
+
+                if (escapePressCount >= 5)
+                {
+                    escapePressCount = 0;
+                    SaveChartFile(editSongId); 
+                    if (bgmSource != null && bgmSource.isPlaying) bgmSource.Stop();
+                    if (CoreManager.Instance != null) CoreManager.Instance.LoadSongSelectScene();
+                }
             }
         }
 
@@ -1150,7 +1172,6 @@ public class ChartEditorManager : MonoBehaviour
             Shader defaultShader = Shader.Find("Sprites/Default");
             if (defaultShader != null) sr.material = new Material(defaultShader);
             
-            // ✅ 색상을 기존 그리드/마디선 톤으로 맞추고, 렌더링 순서를 노트(5)보다 아래인 1로 설정
             sr.color = new Color(0.6f, 0.6f, 0.6f, 0.8f); 
             sr.sortingOrder = 1; 
             
@@ -1458,7 +1479,7 @@ public class ChartEditorManager : MonoBehaviour
 
     private void LoadChartForEditor(int songId)
     {
-        string path = Path.Combine(Application.streamingAssetsPath, "chart", $"{songId}.txt");
+        string path = Path.Combine(Application.streamingAssetsPath, "chart", $"{songId}_{editLevelId}.txt");
         
         foreach (var n in editorNotes) if (n.VisualObject) Destroy(n.VisualObject); editorNotes.Clear();
         foreach (var b in longNoteBodies) if (b.BodyObj) Destroy(b.BodyObj); longNoteBodies.Clear();
@@ -1478,6 +1499,8 @@ public class ChartEditorManager : MonoBehaviour
         isRedNoteMode = false; isDraggingRedNote = false; draggedRedNote = null;
         selectedFreeKeyNote = null;
         inputBuffer = "";
+        escapePressCount = 0;
+        escapePressTimer = 0f;
         
         if (settingUIGroup) { settingUIGroup.alpha = 0f; settingUIGroup.gameObject.SetActive(false); }
         if (chartUIGroup) { chartUIGroup.alpha = 1f; chartUIGroup.gameObject.SetActive(true); }
@@ -1486,7 +1509,10 @@ public class ChartEditorManager : MonoBehaviour
 
         if (!File.Exists(path)) return;
 
-        foreach (string line in File.ReadAllLines(path, System.Text.Encoding.UTF8))
+        string[] allLines = File.ReadAllLines(path, System.Text.Encoding.UTF8);
+
+        // --- 1st Pass: BPM, OFFSET, SPEED 정보 선제 로드 ---
+        foreach (string line in allLines)
         {
             string cleanLine = line.Contains("#") ? line.Substring(0, line.IndexOf('#')).Trim() : line.Trim();
             if (string.IsNullOrWhiteSpace(cleanLine)) continue;
@@ -1501,7 +1527,32 @@ public class ChartEditorManager : MonoBehaviour
             else if (cleanLine.StartsWith("NoteSpeed:", StringComparison.OrdinalIgnoreCase)) { initialSpeed = double.Parse(cleanLine.Split(':')[1].Trim(), CultureInfo.InvariantCulture); }
             else if (type == "BPM" && data.Length >= 5) { bpmChanges.Add(new EditorBpm { Measure = long.Parse(data[1]), Num = long.Parse(data[2]), Den = long.Parse(data[3]), Bpm = double.Parse(data[4], CultureInfo.InvariantCulture) }); }
             else if (type == "SPEED" && data.Length >= 5) { speedChanges.Add(new EditorSpeed { Measure = long.Parse(data[1]), Num = long.Parse(data[2]), Den = long.Parse(data[3]), Multiplier = double.Parse(data[4], CultureInfo.InvariantCulture) }); }
-            else if (type == "STOP" && data.Length >= 4) { stopEvents.Add(new EditorStopEvent { Measure = long.Parse(data[1]), Num = long.Parse(data[2]), Den = long.Parse(data[3]) }); }
+        }
+
+        if (!bpmChanges.Any(b => b.AbsoluteBeat == 0)) {
+            bpmChanges.Add(new EditorBpm { Measure = 1, Num = 0, Den = 4, Bpm = initialBpm });
+        }
+        bpmChanges = bpmChanges.OrderBy(b => b.AbsoluteBeat).ToList();
+        
+        if (!speedChanges.Any(s => s.AbsoluteBeat == 0)) {
+            speedChanges.Add(new EditorSpeed { Measure = 1, Num = 0, Den = 4, Multiplier = initialSpeed });
+        }
+        speedChanges = speedChanges.OrderBy(s => s.AbsoluteBeat).ToList();
+
+        // --- 2nd Pass: 실제 노트 및 이벤트 로드 ---
+        foreach (string line in allLines)
+        {
+            string cleanLine = line.Contains("#") ? line.Substring(0, line.IndexOf('#')).Trim() : line.Trim();
+            if (string.IsNullOrWhiteSpace(cleanLine)) continue;
+
+            string[] data = cleanLine.Split(',');
+            string type = data[0].Trim().ToUpper();
+
+            if (type == "BPM" || type == "OFFSET" || type == "SONGSTARTOFFSET" || type == "SPEED" || cleanLine.StartsWith("KeyMode:") || cleanLine.StartsWith("NoteSpeed:", StringComparison.OrdinalIgnoreCase)) {
+                continue; // 1st Pass에서 이미 처리함
+            }
+            
+            if (type == "STOP" && data.Length >= 4) { stopEvents.Add(new EditorStopEvent { Measure = long.Parse(data[1]), Num = long.Parse(data[2]), Den = long.Parse(data[3]) }); }
             else if (type == "START" && data.Length >= 4) { startEvents.Add(new EditorStartEvent { Measure = long.Parse(data[1]), Num = long.Parse(data[2]), Den = long.Parse(data[3]) }); }
             else if (type == "FREEKEY" && data.Length >= 4 && data[1].Trim() == "Linear") { 
                 string actionOrId = data[2].Trim();
@@ -1594,23 +1645,13 @@ public class ChartEditorManager : MonoBehaviour
             }
             else { originalOtherEvents.Add(cleanLine); }
         }
-        
-        if (!bpmChanges.Any(b => b.AbsoluteBeat == 0)) {
-            bpmChanges.Add(new EditorBpm { Measure = 1, Num = 0, Den = 4, Bpm = initialBpm });
-        }
-        bpmChanges = bpmChanges.OrderBy(b => b.AbsoluteBeat).ToList();
-        
-        if (!speedChanges.Any(s => s.AbsoluteBeat == 0)) {
-            speedChanges.Add(new EditorSpeed { Measure = 1, Num = 0, Den = 4, Multiplier = initialSpeed });
-        }
-        speedChanges = speedChanges.OrderBy(s => s.AbsoluteBeat).ToList();
 
         RefreshLongNoteBodies();
     }
 
     public void SaveChartFile(int songId)
     {
-        string path = Path.Combine(Application.streamingAssetsPath, "chart", $"{songId}.txt");
+        string path = Path.Combine(Application.streamingAssetsPath, "chart", $"{songId}_{editLevelId}.txt");
         List<string> output = new List<string>();
 
         double initialBpm = bpmChanges.Count > 0 ? bpmChanges[0].Bpm : 120.0;
@@ -1833,6 +1874,74 @@ public class ChartEditorManager : MonoBehaviour
                         inputBuffer += e.character; e.Use(); 
                     } 
                 }
+            }
+
+            if (Event.current.type == EventType.Repaint)
+            {
+                float winW = 600f;
+                float winH = 200f;
+                float winX = (Screen.width * invScale - winW) / 2f;
+                float winY = (Screen.height * invScale - winH) / 2f;
+
+                GUI.color = new Color(0.1f, 0.1f, 0.15f, 0.95f);
+                GUI.DrawTexture(new Rect(winX, winY, winW, winH), Texture2D.whiteTexture);
+                
+                GUI.color = new Color(0.3f, 0.5f, 0.9f, 1f);
+                GUI.DrawTexture(new Rect(winX, winY, winW, 5f), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(winX, winY + winH - 5f, winW, 5f), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(winX, winY, 5f, winH), Texture2D.whiteTexture);
+                GUI.DrawTexture(new Rect(winX + winW - 5f, winY, 5f, winH), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+
+                GUIStyle titleStyle = new GUIStyle();
+                if (customGuiFont != null) titleStyle.font = customGuiFont;
+                titleStyle.fontSize = 24;
+                titleStyle.normal.textColor = new Color(0.4f, 0.8f, 1f);
+                titleStyle.alignment = TextAnchor.MiddleCenter;
+
+                GUIStyle guideStyle = new GUIStyle();
+                if (customGuiFont != null) guideStyle.font = customGuiFont;
+                guideStyle.fontSize = 16;
+                guideStyle.normal.textColor = new Color(0.8f, 0.8f, 0.8f);
+                guideStyle.alignment = TextAnchor.MiddleCenter;
+                
+                GUIStyle inputStyle = new GUIStyle();
+                if (customGuiFont != null) inputStyle.font = customGuiFont;
+                inputStyle.fontSize = 20;
+                inputStyle.normal.textColor = Color.white;
+                inputStyle.alignment = TextAnchor.MiddleCenter;
+
+                string title = isInputtingFreeKeyNote ? "FREE-KEY NOTE INPUT" : "LINEAR EVENT INPUT";
+                
+                string guide = "";
+                if (isInputtingFreeKeyNote) {
+                    guide = "형식: 회전각도, 방향, 판정선번호, 시작X, 도착X (예: 0, Top, 1, -50, 50)";
+                } else {
+                    if (linearInputType == 1) guide = "생성/제거 - 형식: 판정선번호 (예: 1)";
+                    else if (linearInputType == 2) guide = "노출/숨김 - 형식: 판정선번호, 시간 (예: 1, 0.5)";
+                    else if (linearInputType == 3) guide = "이동 - 형식: 판정선번호, 목표X, 목표Y, 시간 (예: 1, 0, 2.75, 1.0)";
+                    else if (linearInputType == 4) guide = "회전 - 형식: 판정선번호, 목표각도, 시간 (예: 1, 90, 0.5)";
+                    else guide = "콤마(,)로 구분하여 값을 입력하세요. (취소: ESC, 입력: Enter)";
+                }
+
+                GUI.Label(new Rect(winX, winY + 20, winW, 30), title, titleStyle);
+                GUI.Label(new Rect(winX, winY + 60, winW, 30), guide, guideStyle);
+
+                GUI.color = new Color(0f, 0f, 0f, 0.5f);
+                GUI.DrawTexture(new Rect(winX + 30, winY + 110, winW - 60, 50), Texture2D.whiteTexture);
+                GUI.color = Color.white;
+
+                float blinkAlpha = Mathf.PingPong(Time.time * 2f, 1f);
+                Color cursorColor = new Color(1f, 1f, 1f, blinkAlpha);
+                
+                GUI.Label(new Rect(winX + 30, winY + 110, winW - 60, 50), inputBuffer, inputStyle);
+                
+                Vector2 textSize = inputStyle.CalcSize(new GUIContent(inputBuffer));
+                float cursorX = winX + 30 + (winW - 60) / 2f + textSize.x / 2f + 2f;
+                
+                GUI.color = cursorColor;
+                GUI.DrawTexture(new Rect(cursorX, winY + 120, 2f, 30f), Texture2D.whiteTexture);
+                GUI.color = Color.white;
             }
         }
 

@@ -9,11 +9,11 @@ public class CoreManager : MonoBehaviour
 
     public SongData CurrentSongData; 
     public bool IsMvOn = false;      
+    public int CurrentLevelId = 2; // 1: EASY, 2: HARD, 3: INSANE (기본값 HARD)
     public SettingsData CurrentSettings = new SettingsData(); 
     
     public bool IsAutoPlay = false;
 
-    // ⭐ 현재 활성화된 씬의 이름을 추적하여 정확히 지울 수 있도록 함
     private string currentActiveScene = ""; 
 
     void Awake()
@@ -53,11 +53,12 @@ public class CoreManager : MonoBehaviour
         SceneManager.LoadSceneAsync(startSceneName, LoadSceneMode.Additive);
     }
 
-    public void LoadGameScene(SongData songData, bool mvState)
+    // 난이도(levelId)를 받아옵니다.
+    public void LoadGameScene(SongData songData, bool mvState, int levelId)
     {
         CurrentSongData = songData;
         IsMvOn = mvState;
-        // ⭐ 하드코딩된 언로드 대상을 제거하고 새로 로드할 씬 이름만 넘김
+        CurrentLevelId = levelId;
         StartCoroutine(TransitionScene("2_Game"));
     }
 
@@ -66,22 +67,21 @@ public class CoreManager : MonoBehaviour
         StartCoroutine(TransitionScene("1_SongSelect"));
     }
 
-    public void LoadEditorScene(SongData songData)
+    // 에디터 씬으로 넘어갈 때 곡 데이터와 선택된 난이도를 함께 받도록 수정됨
+    public void LoadEditorScene(SongData songData, int levelId)
     {
         CurrentSongData = songData;
+        CurrentLevelId = levelId;
         StartCoroutine(TransitionScene("3_Editor"));
     }
 
     private IEnumerator TransitionScene(string loadSceneName)
     {
-        // 1. 현재 활성화된 씬의 정보를 구조체로 미리 받아둠 (재시작 시 같은 이름의 씬 충돌 방지)
         Scene sceneToUnload = SceneManager.GetSceneByName(currentActiveScene);
         
-        // 2. 새로운 씬 로드
         AsyncOperation loadOp = SceneManager.LoadSceneAsync(loadSceneName, LoadSceneMode.Additive);
         while (!loadOp.isDone) yield return null;
 
-        // 3. 이전 씬이 유효하게 열려있다면 정확히 찾아 언로드
         if (sceneToUnload.IsValid() && sceneToUnload.isLoaded)
         {
             AsyncOperation unloadOp = SceneManager.UnloadSceneAsync(sceneToUnload);
@@ -91,7 +91,6 @@ public class CoreManager : MonoBehaviour
             }
         }
         
-        // 4. 추적 중인 현재 씬 갱신
         currentActiveScene = loadSceneName;
     }
 }

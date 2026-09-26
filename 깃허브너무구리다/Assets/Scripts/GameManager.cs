@@ -6,7 +6,6 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.Video;
 using UnityEngine.InputSystem;
-using UnityEngine.InputSystem.Controls; 
 using TMPro;
 
 public enum GameState { Loading, Playing, Paused, Rewinding } 
@@ -76,7 +75,6 @@ public class GameManager : MonoBehaviour
     public CanvasGroup titleGroup; 
     public TextMeshProUGUI loadingTitleText;
     public TextMeshProUGUI loadingDiffText;
-    public UnityEngine.UI.Image loadingDiffImg; 
     public CanvasGroup detailGroup; 
     public TextMeshProUGUI loadingComposerValueText; 
     public TextMeshProUGUI loadingIllustValueText;
@@ -198,8 +196,6 @@ public class GameManager : MonoBehaviour
     private Vector2 initialComboPos;
     private Vector2 initialComboTitlePos;
     private Vector2 initialFkComboPos;
-    
-    private Dictionary<string, Sprite> levelSpriteCache = new Dictionary<string, Sprite>();
 
     void Awake() { 
         Instance = this; 
@@ -236,9 +232,6 @@ public class GameManager : MonoBehaviour
                 if (char.IsDigit(c)) { comboSpriteDict[c] = s; break; }
             }
         }
-        
-        Sprite[] levelSprites = Resources.LoadAll<Sprite>("Sprites/Level/Level");
-        foreach(var s in levelSprites) { levelSpriteCache[s.name] = s; }
 
         if (comboImageContainer != null) {
             initialComboScale = comboImageContainer.localScale;
@@ -276,14 +269,36 @@ public class GameManager : MonoBehaviour
     private IEnumerator StartGameSetupRoutine() 
     {
         int songId = currentSong.Id;
+        int levelId = CoreManager.Instance.CurrentLevelId; // 추가됨
 
         currentState = GameState.Loading;
 
         loadingTitleText.text = currentSong.Name + currentSong.SubName;
-        if (loadingDiffText != null) loadingDiffText.text = currentSong.Difficulty;
         loadingComposerValueText.text = currentSong.Composer;
         loadingIllustValueText.text = currentSong.illustration;
         loadingVocalValueText.text = currentSong.Vocal;
+
+        // 중앙정렬된 난이도 텍스트 렌더링
+        string diffName = "HARD";
+        string diffVal = currentSong.Difficulty_HARD;
+        Color diffColor = Color.white;
+
+        if (levelId == 1) {
+            diffName = "EASY"; diffVal = currentSong.Difficulty_EASY;
+            ColorUtility.TryParseHtmlString("#5ce1e6", out diffColor);
+        } else if (levelId == 2) {
+            diffName = "HARD"; diffVal = currentSong.Difficulty_HARD;
+            ColorUtility.TryParseHtmlString("#ff751f", out diffColor);
+        } else if (levelId == 3) {
+            diffName = "INSANE"; diffVal = currentSong.Difficulty_INSANE;
+            ColorUtility.TryParseHtmlString("#ff3131", out diffColor);
+        }
+
+        if (loadingDiffText != null) {
+            loadingDiffText.text = $"{diffName} {diffVal}";
+            loadingDiffText.color = diffColor;
+            loadingDiffText.alignment = TextAlignmentOptions.Center; 
+        }
 
         if(laneGroup != null) laneGroup.alpha = 0f;
         loadingCanvasGroup.alpha = 1f;
@@ -301,7 +316,7 @@ public class GameManager : MonoBehaviour
         ResourceRequest bgReq = Resources.LoadAsync<Sprite>($"Sprites/blurimg/{songId}");
         ResourceRequest jacketReq = Resources.LoadAsync<Sprite>($"Sprites/loadimg-large/{songId}");
 
-        LoadChart(songId); 
+        LoadChart(songId, levelId); // 레벨 ID를 추가해 로딩
         totalNotes = currentSong.NoteCount;
         yield return null;
 
@@ -385,19 +400,6 @@ public class GameManager : MonoBehaviour
 
         if (selectScreenImg != null && bgSprite != null) selectScreenImg.sprite = bgSprite;
         if (loadImgLarge != null && jacketReq.asset != null) loadImgLarge.sprite = jacketReq.asset as Sprite;
-
-        if (loadingDiffImg != null)
-        {
-            string diffKey = $"{currentSong.Difficulty}_Big";
-            if (levelSpriteCache.TryGetValue(diffKey, out Sprite diffSprite))
-            {
-                loadingDiffImg.sprite = diffSprite;
-                loadingDiffImg.color = Color.white;
-                loadingDiffImg.SetNativeSize(); 
-                loadingDiffImg.gameObject.SetActive(true);
-            }
-            else loadingDiffImg.color = Color.clear;
-        }
 
         string mvPathAvi = Path.Combine(Application.streamingAssetsPath, "MV", $"{songId}.avi");
         string mvPathMp4 = Path.Combine(Application.streamingAssetsPath, "MV", $"{songId}.mp4");
@@ -565,7 +567,7 @@ public class GameManager : MonoBehaviour
 
     private float EaseOut(float x) { return 1f - Mathf.Pow(1f - x, 3f); }
 
-    public void LoadChart(int songId) 
+    public void LoadChart(int songId, int levelId) 
     {
         notes.Clear(); speedChanges.Clear(); bpmChanges.Clear(); 
         uiEvents.Clear(); linearEvents.Clear(); scrollEvents.Clear();
@@ -575,8 +577,12 @@ public class GameManager : MonoBehaviour
         songStartOffset = 0; chartAudioOffset = 0;
         for(int i=0; i<4; i++) notesByLane[i].Clear();
 
-        string path = Path.Combine(Application.streamingAssetsPath, "chart", $"{songId}.txt");
-        if (!File.Exists(path)) return;
+        string path = Path.Combine(Application.streamingAssetsPath, "chart", $"{songId}_{levelId}.txt");
+        if (!File.Exists(path))
+        {
+            Debug.LogWarning($"채보 파일이 없습니다: {path}");
+            return;
+        }
 
         string[] lines = File.ReadAllLines(path);
         double initialBpm = 120.0;
@@ -949,7 +955,7 @@ public class GameManager : MonoBehaviour
 
     public void RetryGame()
     {
-        CoreManager.Instance.LoadGameScene(currentSong, CoreManager.Instance.IsMvOn);
+        CoreManager.Instance.LoadGameScene(currentSong, CoreManager.Instance.IsMvOn, CoreManager.Instance.CurrentLevelId);
     }
 
     public void BackToMenu()
